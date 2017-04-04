@@ -28,7 +28,6 @@ public class Webcam extends JPanel {
 
    public static void main(String args[]) {
       System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
-
       Webcam panel = new Webcam();
 
       // Initialize JPanel
@@ -53,23 +52,25 @@ public class Webcam extends JPanel {
          SwingWorker<Void, Mat> worker = new SwingWorker<Void, Mat>() {
             @Override
             protected Void doInBackground() throws Exception {
+
+               // Put something into thisFrame so it doesn't glitch at the beginning
                Mat firstFrame = new Mat();
                camera.read(firstFrame);
-               pastImage = panel.matrixToBuffer(firstFrame);
-               Mat currentImage = new Mat();
+               thisFrame = panel.matrixToBuffer(firstFrame);
 
+               Mat currentImage = new Mat();
                while (!isCancelled()) {
                   camera.read(currentImage); // Get camera image
                   if (!currentImage.empty()) {
                      frame.setSize(currentImage.width() + 40, currentImage.height() + 60);
                      pastImage = thisFrame;
                      thisFrame = panel.matrixToBuffer(currentImage);
-                     image = thisFrame;
+                     image = diff(pastImage,thisFrame);
                      panel.repaint(); // Refresh
                   } else {
                      System.err.println("Error: no frame captured");
                   }
-                  //Thread.sleep(50); // Set refresh rate, as well as prevent the code from tripping over itself
+                  Thread.sleep(70); // Set refresh rate, as well as prevent the code from tripping over itself
                }
                return null;
             }
@@ -96,7 +97,7 @@ public class Webcam extends JPanel {
             int gray1 = toGrayscale(c1);
             int gray2 = toGrayscale(c2);
             int diff = Math.abs(gray1 - gray2);
-            //diff = threshold(diff);
+            diff = threshold(diff);
             Color dC = new Color(diff, diff, diff);
             current.setRGB(x, y, dC.getRGB());
          }
@@ -105,14 +106,14 @@ public class Webcam extends JPanel {
    }
 
    private static int toGrayscale(Color color) {
-      int red = (int) (color.getRed() * 0.3D);
-      int green = (int) (color.getGreen() * 0.6D);
-      int blue = (int) (color.getBlue() * 0.1D);
+      int red = (int) (color.getRed() * 0.3);
+      int green = (int) (color.getGreen() * 0.6);
+      int blue = (int) (color.getBlue() * 0.1);
       return red + green + blue;
    }
 
    private static int threshold(int gray) {
-      return gray < 30 ? 255 : 0;
+      return gray < 10 ? 255 : 0;
    }
 
    /**
