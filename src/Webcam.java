@@ -4,8 +4,6 @@ import org.opencv.videoio.VideoCapture;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
@@ -13,7 +11,7 @@ import java.awt.image.DataBufferByte;
 
 /**
  * A live updating openCV webcam. Base code comes from Ethan Lee (https://github.com/ethanlee16).
- * I optimized some things though.
+ * I optimized some things.
  *
  * @author Lukas Strobel
  * @since 4/3/2017
@@ -38,38 +36,37 @@ public class Webcam extends JPanel {
       frame.setVisible(true);
       Mat currentImage = new Mat();
 
-      VideoCapture capture = new VideoCapture(0);
+      VideoCapture camera = new VideoCapture(0);
 
-      frame.addWindowListener(new WindowAdapter()
-      {
+      // Special window listener because there are threads that need to be shutdown on a close
+      frame.addWindowListener(new WindowAdapter() {
          @Override
-         public void windowClosing(WindowEvent e)
-         {
+         public void windowClosing(WindowEvent e) {
             e.getWindow().dispose();
-            capture.release();
+            camera.release();
             System.exit(0);
          }
       });
-      if(capture.isOpened()) {
+
+      if (camera.isOpened()) {
+         // Create SwingWorker to encapsulate the process in a thread
          SwingWorker<Void, Mat> worker = new SwingWorker<Void, Mat>() {
             @Override
             protected Void doInBackground() throws Exception {
-               while(!isCancelled()) {
-                  capture.read(currentImage);
-                  if(!currentImage.empty()) {
+               while (!isCancelled()) {
+                  camera.read(currentImage); // Get camera image
+                  if (!currentImage.empty()) {
                      frame.setSize(currentImage.width() + 40, currentImage.height() + 60);
                      image = panel.matrixToBuffer(currentImage);
-                     panel.repaint();
+                     panel.repaint(); // Refresh
+                  } else {
+                     System.err.println("Error: no frame captured");
                   }
-                  else {
-                     System.out.println("Error: no frame captured");
-                  }
-                  Thread.sleep(50); // prudential time to avoid block the event queue
+                  Thread.sleep(50); // Set refresh rate, as well as prevent the code from tripping over itself
                }
                return null;
             }
          };
-
          worker.execute();
       }
       return;
