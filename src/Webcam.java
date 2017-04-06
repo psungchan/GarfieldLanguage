@@ -1,6 +1,10 @@
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
+import org.opencv.videoio.Videoio;
 
 import javax.swing.*;
 import java.awt.*;
@@ -18,25 +22,29 @@ import java.awt.image.DataBufferByte;
  */
 public class Webcam extends JPanel {
 
-   private static BufferedImage image;
-   private static BufferedImage pastImage;
-   private static BufferedImage thisFrame;
+   private static BufferedImage image; // The actual displayed image on screen
 
    public Webcam() {
       super();
    }
 
    public static void main(String args[]) {
-      System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
-      Webcam panel = new Webcam();
+      System.loadLibrary(Core.NATIVE_LIBRARY_NAME); // Import openCV
+      Webcam panel = new Webcam(); // Initialize itself
 
       // Initialize JPanel
       JFrame frame = new JFrame("Webcam");
-      frame.setSize(1080, 720);
+      frame.setSize(200, 200);
       frame.setContentPane(panel);
       frame.setVisible(true);
 
-      VideoCapture camera = new VideoCapture(0);
+      VideoCapture camera = new VideoCapture(0); // The camera
+
+      // Attempt to set the frame size, but it doesn't really work. Only just makes it bigger
+      camera.set(Videoio.CAP_PROP_FRAME_WIDTH, 1900);
+      camera.set(Videoio.CAP_PROP_FRAME_HEIGHT, 1000);
+
+
       // Special window listener because there are threads that need to be shutdown on a close
       frame.addWindowListener(new WindowAdapter() {
          @Override
@@ -48,25 +56,40 @@ public class Webcam extends JPanel {
       });
 
       if (camera.isOpened()) {
+
          // Create SwingWorker to encapsulate the process in a thread
          SwingWorker<Void, Mat> worker = new SwingWorker<Void, Mat>() {
             @Override
             protected Void doInBackground() throws Exception {
 
                // Put something into thisFrame so it doesn't glitch at the beginning
-               Mat firstFrame = new Mat();
-               camera.read(firstFrame);
-               thisFrame = panel.matrixToBuffer(firstFrame);
+               Mat thisFrame = new Mat();
+               camera.read(thisFrame);
 
-               Mat currentImage = new Mat();
+               // Set up new Mats for diffing them later, manually set the amount of channels to avoid an openCV error
+               Mat pastFrame = new Mat(thisFrame.width(),thisFrame.height(), CvType.CV_8UC3);
+               Mat diff = new Mat(thisFrame.width(),thisFrame.height(), CvType.CV_8UC3);
+
+               // isCancelled is set by the SwingWorker
                while (!isCancelled()) {
-                  camera.read(currentImage); // Get camera image
-                  if (!currentImage.empty()) {
-                     frame.setSize(currentImage.width() + 40, currentImage.height() + 60);
-                     pastImage = thisFrame;
-                     thisFrame = panel.matrixToBuffer(currentImage);
-                     image = diff(pastImage,thisFrame);
-                     panel.repaint(); // Refresh
+
+                  thisFrame.copyTo(pastFrame); // What was previously the frame is now the pastFrame
+                  camera.read(thisFrame); // Get camera image, and set it to currentImage
+
+                  if (!thisFrame.empty()) {
+
+                     // Set the frame size to have a nice border around the image
+                     frame.setSize(thisFrame.width() + 40, thisFrame.height() + 60);
+
+                     // currentImage.copyTo(thisFrame); // Update thisframe
+
+                     Core.absdiff(thisFrame, pastFrame, diff); // Diff the frames
+                     Imgproc.cvtColor(diff, diff, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
+                     Imgproc.GaussianBlur(diff,diff,new Size(7,7) , 7); // Despeckle
+                     Imgproc.threshold(diff, diff, 5, 255, 1); // Threshhold the gray
+
+                     image = matrixToBuffer(diff); // Update the display image
+                     panel.repaint(); // Refresh the panel
                   } else {
                      System.err.println("Error: no frame captured");
                   }
@@ -80,38 +103,6 @@ public class Webcam extends JPanel {
       return;
    }
 
-   /**
-    * Differences the pixels of an image by another.
-    *
-    * @param current  The current frame.
-    * @param previous The previous frame.
-    * @return The modified frame with diff pixels.
-    */
-   public static BufferedImage diff(BufferedImage current, BufferedImage previous) {
-      int width = current.getWidth();
-      int height = current.getHeight();
-      for (int y = 0; y < height; y++) {
-         for (int x = 0; x < width; x++) {
-            Color c1 = new Color(current.getRGB(x, y));
-            Color c2 = new Color(previous.getRGB(x, y));
-            int gray1 = toGrayscale(c1);
-            int gray2 = toGrayscale(c2);
-            int diff = Math.abs(gray1 - gray2);
-            diff = threshold(diff);
-            Color dC = new Color(diff, diff, diff);
-            current.setRGB(x, y, dC.getRGB());
-         }
-      }
-      return current;
-   }
-
-   private static int toGrayscale(Color color) {
-      int red = (int) (color.getRed() * 0.3);
-      int green = (int) (color.getGreen() * 0.6);
-      int blue = (int) (color.getBlue() * 0.1);
-      return red + green + blue;
-   }
-
    private static int threshold(int gray) {
       return gray < 10 ? 255 : 0;
    }
@@ -122,7 +113,7 @@ public class Webcam extends JPanel {
     * @param matBGR Mat of type CV_8UC3 or CV_8UC1
     * @return BufferedImage of type TYPE_3BYTE_BGR or TYPE_BYTE_GRAY
     */
-   public BufferedImage matrixToBuffer(Mat matBGR) {
+   public static BufferedImage matrixToBuffer(Mat matBGR) {
       int type = BufferedImage.TYPE_BYTE_GRAY;
       if (matBGR.channels() > 1) {
          type = BufferedImage.TYPE_3BYTE_BGR;
