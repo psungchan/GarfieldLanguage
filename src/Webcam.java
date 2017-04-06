@@ -67,8 +67,8 @@ public class Webcam extends JPanel {
                camera.read(thisFrame);
 
                // Set up new Mats for diffing them later, manually set the amount of channels to avoid an openCV error
-               Mat pastFrame = new Mat(thisFrame.width(),thisFrame.height(), CvType.CV_8UC3);
-               Mat diff = new Mat(thisFrame.width(),thisFrame.height(), CvType.CV_8UC3);
+               Mat pastFrame = new Mat(thisFrame.width(), thisFrame.height(), CvType.CV_8UC3);
+               Mat diff = new Mat(thisFrame.width(), thisFrame.height(), CvType.CV_8UC3);
 
                // isCancelled is set by the SwingWorker
                while (!isCancelled()) {
@@ -83,7 +83,7 @@ public class Webcam extends JPanel {
 
                      Core.absdiff(thisFrame, pastFrame, diff); // Diff the frames
                      Imgproc.cvtColor(diff, diff, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
-                     Imgproc.GaussianBlur(diff,diff,new Size(7,7) , 7); // Despeckle
+                     Imgproc.GaussianBlur(diff, diff, new Size(7, 7), 7); // Despeckle
                      Imgproc.threshold(diff, diff, 5, 255, 1); // Threshhold the gray
 
                      image = matrixToBuffer(diff); // Update the display image
