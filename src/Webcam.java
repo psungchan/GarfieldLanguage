@@ -81,8 +81,6 @@ public class Webcam extends JPanel {
                      // Set the frame size to have a nice border around the image
                      frame.setSize(thisFrame.width() + 40, thisFrame.height() + 60);
 
-                     // currentImage.copyTo(thisFrame); // Update thisframe
-
                      Core.absdiff(thisFrame, pastFrame, diff); // Diff the frames
                      Imgproc.cvtColor(diff, diff, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
                      Imgproc.GaussianBlur(diff,diff,new Size(7,7) , 7); // Despeckle
