@@ -1,8 +1,7 @@
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-import org.opencv.core.Size;
+import org.opencv.core.*;
+import org.opencv.core.Point;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 
@@ -12,6 +11,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
+
+import static org.opencv.objdetect.Objdetect.CASCADE_SCALE_IMAGE;
 
 /**
  * A live updating openCV webcam. Base code comes from Ethan Lee (https://github.com/ethanlee16).
@@ -23,9 +24,15 @@ import java.awt.image.DataBufferByte;
 public class Webcam extends JPanel {
 
    private static BufferedImage image; // The actual displayed image on screen
+   private static CascadeClassifier faceCascade;
+   private static CascadeClassifier eyesCascade;
+   private static int absoluteFaceSize;
 
    public Webcam() {
       super();
+      faceCascade = new CascadeClassifier("C:\\Users\\Lukas\\Documents\\Programming-Technology\\GarfieldLanguage\\resource\\haarcascade_frontalface_default.xml");
+      eyesCascade = new CascadeClassifier("C:\\Users\\Lukas\\Documents\\Programming-Technology\\GarfieldLanguage\\resource\\haarcascade_eye.xml");
+      absoluteFaceSize = 0;
    }
 
    public static void main(String args[]) {
@@ -65,33 +72,36 @@ public class Webcam extends JPanel {
                // Put something into thisFrame so it doesn't glitch at the beginning
                Mat thisFrame = new Mat();
                camera.read(thisFrame);
+               Imgproc.cvtColor(thisFrame, thisFrame, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
 
                // Set up new Mats for diffing them later, manually set the amount of channels to avoid an openCV error
-               Mat pastFrame = new Mat(thisFrame.width(), thisFrame.height(), CvType.CV_8UC3);
-               Mat diff = new Mat(thisFrame.width(), thisFrame.height(), CvType.CV_8UC3);
+               Mat pastFrame = new Mat();
+               Mat diff = new Mat();
+
 
                // isCancelled is set by the SwingWorker
                while (!isCancelled()) {
 
                   thisFrame.copyTo(pastFrame); // What was previously the frame is now the pastFrame
                   camera.read(thisFrame); // Get camera image, and set it to currentImage
+                  Imgproc.cvtColor(thisFrame, thisFrame, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
 
                   if (!thisFrame.empty()) {
 
                      // Set the frame size to have a nice border around the image
                      frame.setSize(thisFrame.width() + 40, thisFrame.height() + 60);
 
+
                      Core.absdiff(thisFrame, pastFrame, diff); // Diff the frames
-                     Imgproc.cvtColor(diff, diff, Imgproc.COLOR_BGR2GRAY); // Convert the diff to gray
                      Imgproc.GaussianBlur(diff, diff, new Size(7, 7), 7); // Despeckle
                      Imgproc.threshold(diff, diff, 5, 255, 1); // Threshhold the gray
 
-                     image = matrixToBuffer(diff); // Update the display image
+                     image = matrixToBuffer(getFace(thisFrame, diff)); // Update the display image
                      panel.repaint(); // Refresh the panel
                   } else {
                      System.err.println("Error: no frame captured");
                   }
-                  Thread.sleep(70); // Set refresh rate, as well as prevent the code from tripping over itself
+                  //Thread.sleep(70); // Set refresh rate, as well as prevent the code from tripping over itself
                }
                return null;
             }
@@ -125,6 +135,48 @@ public class Webcam extends JPanel {
       final byte[] targetPixels = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
       System.arraycopy(sourcePixels, 0, targetPixels, 0, sourcePixels.length);
       return image;
+   }
+
+   /**
+    * Detect and return a face
+    *
+    * @param frame The total webcam view. Must be in grayscale.
+    * @return A Mat that contains only the face
+    */
+   public static Mat getFace(Mat frame, Mat drawFrame) {
+
+      MatOfRect faces = new MatOfRect();
+
+      // compute minimum face size (20% of the frame height)
+      if (absoluteFaceSize == 0) {
+         int height = frame.rows();
+         if (Math.round(height * 0.2f) > 0) {
+            absoluteFaceSize = Math.round(height * 0.2f);
+         }
+      }
+
+      // detect faces
+      faceCascade.detectMultiScale(frame, faces, 1.1, 3, 0 | CASCADE_SCALE_IMAGE,
+            new Size(absoluteFaceSize, absoluteFaceSize), new Size());
+
+      // each rectangle in faces is a face
+      Rect[] facesArray = faces.toArray();
+      for (int i = 0; i < facesArray.length; i++) {
+         Point center = new Point(facesArray[i].x + (facesArray[i].width / 2), facesArray[i].y + facesArray[i].height / 2);
+
+         Mat face = new Mat(frame, facesArray[i]);
+
+         MatOfRect eyes = new MatOfRect();
+
+         eyesCascade.detectMultiScale(face, eyes, 1.1, 2,
+               0 | CASCADE_SCALE_IMAGE, new Size(30, 30), new Size());
+
+         if (eyes.size().width > 0 && eyes.size().height > 0) {
+            Imgproc.ellipse(drawFrame, center, new Size(facesArray[i].width / 2, facesArray[i].height / 2),
+                  0, 0, 360, new Scalar(0, 0, 0), 4, 8, 0);
+         }
+      }
+      return drawFrame;
    }
 
    @Override
