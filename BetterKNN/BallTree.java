@@ -2,6 +2,9 @@ import java.util.*;
 import java.util.function.Consumer;
 
 /**
+ * A generic nearest-neighbor search algorithm using ball trees.
+ *
+ * @author GHS Programming Club
  * @since 4/24/2017
  */
 public abstract class BallTree<T> implements NearestNeighborLookup<T> {
@@ -14,9 +17,18 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
       public T midpoint(T a, T b);
    }
 
+   /**
+    * Find the farthest object of type T to another object of the same type from a list of objects.
+    *
+    * @param d     A distance function class to measure distance with.
+    * @param list  The list of objects from which to find the farthest point.
+    * @param point The object to compare against.
+    * @param <T>   The type of object being compared.
+    * @return The object of type T in list that is farthest from object point.
+    */
    private static <T> T getFarthestPoint(DistanceFunction<T> d, List<T> list, T point) {
       T farthest = list.get(0);
-      for (T p : list) {
+      for (T p : list) { // super simple value updating
          if (d.distance(p, point) > d.distance(farthest, point)) {
             farthest = p;
          }
@@ -24,9 +36,21 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
       return farthest;
    }
 
+   /**
+    * Create the ball tree data structure. To be run once, then you can search for nearest neighbors using the structure.
+    * Does so recursively.
+    *
+    * @param d      The distance function to compare objects with.
+    * @param m      The function that finds the midpoint between two objects.
+    * @param points The data with which to work with.
+    * @param <T>    The type of object being handled.
+    * @return A BallTree with the proper structure for future lookups.
+    */
    private static <T> BallTree<T> makeBallTree(DistanceFunction<T> d, MidpointFunction<T> m, List<T> points) {
-      if (points.isEmpty()) throw new IllegalArgumentException("Point list cannot be empty.");
+      if (points.isEmpty()) throw new IllegalArgumentException("List cannot be empty.");
 
+      // Base case \\
+      // return a tree leaf if all points passed in are the same
       boolean allSame = true;
       for (T p : points) {
          if (!p.equals(points.get(0))) {
@@ -39,10 +63,13 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
          return new BallTreeLeaf<>(d, points.get(0), points.size());
       }
 
+      // Recursive case \\
+      // Find the two points that are farthest from each other
       T x = points.get(0);
       T a = getFarthestPoint(d, points, x);
       T b = getFarthestPoint(d, points, a);
 
+      // Split the data in half based on their distance to the two points
       List<T> closestToA = new ArrayList<>();
       List<T> closestToB = new ArrayList<>();
 
@@ -54,32 +81,23 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
          }
       }
 
+      // Recurse and make a BallTree with the newly split sets of data
       BallTree<T> aTree = makeBallTree(d, m, closestToA);
       BallTree<T> bTree = makeBallTree(d, m, closestToB);
 
+      // "Draw" a ball around the data so that you can do lookup later
       T midPoint = m.midpoint(a, b);
       double radius = d.distance(midPoint, getFarthestPoint(d, points, midPoint));
 
       return new BallTreeNode<>(d, aTree, bTree, midPoint, radius);
    }
 
-   public static void main(String[] args) {
-      List<Point> data = new ArrayList<>();
-      generateData(data::add, 50);
-
-      NearestNeighborLookup<Point> tree = makeBallTree(Point::distance, Point::midPoint, data);
-      List<Point> result = new ArrayList<>();
-      Point goal = new Point(0.5, 0.5);
-      tree.getKNearestNeighbors(5, goal, result::add);
-      result.forEach(System.out::println);
-
-      System.out.println("\nreal");
-      data.sort(Comparator.comparing(goal::distance));
-      for(int i = 0; i < 5; i++) {
-         System.out.println(data.get(i));
-      }
-   }
-
+   /**
+    * Fill a Consumer with data.
+    *
+    * @param result The Consumer that will accept the data.
+    * @param amt    The amount of data to put in the Consumer.
+    */
    private static void generateData(Consumer<Point> result, int amt) {
       Random random = new Random();
       for (int i = 0; i < amt; i++) {
@@ -93,6 +111,11 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
 
    protected abstract void expand(Consumer<BallTree<T>> children, Consumer<T> result, int k);
 
+   /**
+    * The data structure for storing single nodes, or multiple nodes that are the exact same.
+    *
+    * @param <T> The type of object.
+    */
    private static class BallTreeLeaf<T> extends BallTree<T> {
       private final DistanceFunction<T> d;
       private final T point;
@@ -121,12 +144,17 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
 
       @Override
       public void getKNearestNeighbors(int k, T point, Consumer<T> result) {
-         for (int i = 0; i < Math.min(k, n); i++) {
+         for (int i = 0; i < Math.min(k, n); i++) { // Math.min(k, n) to ensure that we don't send more points than we have.
             result.accept(this.point);
          }
       }
    }
 
+   /**
+    * The data structure for storing multiple "leaves". Basically the circles when using 2D points.
+    *
+    * @param <T> The type of Object.
+    */
    private static class BallTreeNode<T> extends BallTree<T> {
       private final DistanceFunction<T> d;
       private final BallTree<T> left;
@@ -167,15 +195,15 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
       @Override
       public void getKNearestNeighbors(int k, T point, Consumer<T> result) {
          MutableInteger count = new MutableInteger();
-         Consumer<T> consumer = x -> {
+         Consumer<T> consumer = x -> { // Keep track of how many neighbors we've passed in
             count.x++;
             result.accept(x);
          };
          Queue<BallTree<T>> queue = new PriorityQueue<>(16, Comparator.comparingDouble(a -> a.getCircleClosestDistance(point)));
-         queue.add(this); // add the parent ball to the queue
+         queue.add(this); // Add the parent ball to the queue
          while (count.x < k && queue.size() > 0) {
             BallTree<T> head = queue.poll();
-            head.expand(queue::add, consumer, k - count.x); // add on all children of head
+            head.expand(queue::add, consumer, k - count.x); // Add on all children of head
          }
       }
    }
@@ -233,5 +261,22 @@ public abstract class BallTree<T> implements NearestNeighborLookup<T> {
       }
    }
 
+   public static void main(String[] args) {
+      List<Point> data = new ArrayList<>();
+      generateData(data::add, 50);
+
+      NearestNeighborLookup<Point> tree = makeBallTree(Point::distance, Point::midPoint, data);
+      List<Point> result = new ArrayList<>();
+      Point goal = new Point(0.5, 0.5);
+      tree.getKNearestNeighbors(5, goal, result::add);
+      result.forEach(System.out::println);
+
+      // Double check algorithm with brute force
+      System.out.println("\nreal");
+      data.sort(Comparator.comparing(goal::distance));
+      for (int i = 0; i < 5; i++) {
+         System.out.println(data.get(i));
+      }
+   }
 }
 
